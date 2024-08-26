@@ -1,4 +1,4 @@
-# TextBoard: Real-time Collaborative Text Editor
+# TempBoard: Real-time Collaborative Text Editor
 
 TextBoard is a web-based, real-time collaborative text editor that allows multiple users to edit and share text documents simultaneously.
 
