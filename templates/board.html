@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TextBoard - {{ board.id }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        #notifications {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .notification {
+            animation: slideIn 0.5s ease-out;
+            font-size: 1.1rem;
+            padding: 0.75rem 1rem;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col font-['Poppins']">
+    <nav class="bg-blue-600 text-white p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">TextBoard: {{ board.id }}</h1>
+            <div class="space-x-2">
+                <button id="undoButton" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded transition duration-300">
+                    Undo
+                </button>
+                <button id="exportBoard" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition duration-300">
+                    Export
+                </button>
+                <button id="leaveBoard" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition duration-300">
+                    Leave
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex-grow container mx-auto mt-8 p-4 flex flex-col md:flex-row">
+        <main class="flex-grow mr-0 md:mr-4 mb-4 md:mb-0">
+            <textarea id="content" class="w-full h-64 p-4 border rounded shadow-inner resize-y" placeholder="Start typing here...">{{ board.content }}</textarea>
+            <div id="imageContainer" class="mt-4 flex flex-wrap"></div>
+            <div class="flex-grow">
+                <h3 class="text-lg font-bold mb-2">Messages</h3>
+                <div id="messages" class="h-40 overflow-y-auto border p-2 mb-2 bg-gray-100"></div>
+                <input type="text" id="messageInput" class="w-full p-2 border" placeholder="Type a message...">
+            </div>
+        </main>
+        <aside class="w-full md:w-64 bg-gray-100 p-4 rounded shadow flex flex-col">
+            <div class="mb-4">
+                <h2 class="text-xl font-bold mb-2">Active Users</h2>
+                <ul id="activeUsers" class="space-y-1">
+            </div>
+            <div class="mb-4">
+                <h3 class="text-lg font-bold mb-2">Upload Image</h3>
+                <input type="file" id="imageUpload" accept="image/*" class="mb-2">
+                <button id="uploadButton" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition duration-300 w-full">
+                    Upload
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <div id="notifications" class="fixed top-4 right-4 z-50"></div>
+
+    <script>
+        const boardId = '{{ board.id }}';
+        const username = '{{ username }}';
+        let socket = io();
+        let contentHistory = [];
+
+        socket.on('connect', function() {
+            socket.emit('join', {room: boardId});
+        });
+
+        socket.on('update_content', function(data) {
+            document.getElementById('content').value = data.content;
+            updateImageContainer(data.images);
+        });
+
+        socket.on('user_joined', function(data) {
+            updateActiveUsers();
+        });
+
+        socket.on('user_left', function(data) {
+            updateActiveUsers();
+        });
+        
+        document.getElementById('uploadButton').addEventListener('click', function() {
+            const fileInput = document.getElementById('imageUpload');
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    fetch(`/update_board/${boardId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({content: document.getElementById('content').value, image: e.target.result}),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            updateImageContainer(data.images);
+                            fileInput.value = '';
+                        }
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function updateBoard() {
+            const content = document.getElementById('content').value;
+            contentHistory.push(content);
+            if (contentHistory.length > 10) contentHistory.shift();
+            
+            fetch(`/update_board/${boardId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({content: content}),
+            });
+        }
+
+        function updateActiveUsers() {
+            fetch(`/get_active_users/${boardId}`)
+                .then(response => response.json())
+                .then(data => {
+                    const userList = document.getElementById('activeUsers');
+                    userList.innerHTML = '';
+                    data.users.forEach(user => {
+                        const li = document.createElement('li');
+                        li.innerHTML = `<span class="inline-block px-2 py-1 rounded" style="background-color: ${user.color}; color: ${getContrastColor(user.color)};">${user.username}</span>`;
+                        userList.appendChild(li);
+                    });
+                });
+        }
+        
+        function getContrastColor(hexcolor) {
+            const r = parseInt(hexcolor.substr(1,2), 16);
+            const g = parseInt(hexcolor.substr(3,2), 16);
+            const b = parseInt(hexcolor.substr(5,2), 16);
+            
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#000000' : '#FFFFFF';
+        }
+
+        function updateImageContainer(images) {
+            const container = document.getElementById('imageContainer');
+            container.innerHTML = '';
+            images.forEach((imgData, index) => {
+                const imgWrapper = document.createElement('div');
+                imgWrapper.className = 'relative inline-block mb-2 mr-2';
+                
+                const img = document.createElement('img');
+                img.src = imgData;
+                img.className = 'max-w-full h-auto';
+                imgWrapper.appendChild(img);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerText = 'X';
+                deleteBtn.className = 'absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center';
+                deleteBtn.onclick = () => deleteImage(index);
+                imgWrapper.appendChild(deleteBtn);
+                
+                container.appendChild(imgWrapper);
+            });
+        }
+        
+        function deleteImage(index) {
+            fetch(`/delete_image/${boardId}/${index}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateImageContainer(data.images);
+                    }
+                });
+        }
+        
+        function deleteImage(index) {
+            fetch(`/delete_image/${boardId}/${index}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateImageContainer(data.images);
+                    }
+                });
+        }
+
+        document.getElementById('content').addEventListener('input', updateBoard);
+        document.getElementById('content').addEventListener('paste', function(e) {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        fetch(`/update_board/${boardId}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({content: document.getElementById('content').value, image: event.target.result}),
+                        });
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            }
+        });
+
+        document.getElementById('undoButton').addEventListener('click', function() {
+            if (contentHistory.length > 1) {
+                contentHistory.pop();
+                const previousContent = contentHistory.pop();
+                document.getElementById('content').value = previousContent;
+                updateBoard();
+            }
+        });
+
+        document.getElementById('exportBoard').addEventListener('click', function() {
+            window.location.href = `/export_board/${boardId}`;
+        });
+
+        document.getElementById('leaveBoard').addEventListener('click', function() {
+            if (confirm('Are you sure you want to leave this board?')) {
+                fetch(`/leave_board/${boardId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.href = '/';
+                        }
+                    });
+            }
+        });
+
+        updateActiveUsers();
+        setInterval(updateActiveUsers, 3000);
+
+        window.addEventListener('beforeunload', function() {
+            socket.emit('leave', {room: boardId});
+        });
+
+        let userColor;
+        let cursors = {};
+            
+        socket.on('user_joined', function(data) {
+            showNotification(`${data.username} joined the board`, 3000);
+            updateActiveUsers();
+        });
+        
+        socket.on('user_left', function(data) {
+            showNotification(`${data.username} left the board`, 3000);
+            updateActiveUsers();
+        });
+        
+        socket.on('cursor_update', function(data) {
+            updateCursor(data.username, data.position);
+        });
+        
+        socket.on('selection_update', function(data) {
+            updateSelection(data.username, data.start, data.end);
+        });
+        
+        socket.on('new_message', function(data) {
+            addMessage(data);
+        });
+        
+        function showNotification(message, duration) {
+            const notif = document.createElement('div');
+            notif.textContent = message;
+            notif.className = 'notification bg-blue-500 text-white p-2 rounded mb-2';
+            document.getElementById('notifications').appendChild(notif);
+            setTimeout(() => notif.remove(), duration);
+        }
+        
+        function updateCursor(username, position) {
+            if (!cursors[username]) {
+                cursors[username] = document.createElement('div');
+                cursors[username].className = 'absolute w-0.5 h-5 pointer-events-none';
+                cursors[username].style.backgroundColor = userColors[username];
+                document.body.appendChild(cursors[username]);
+            }
+            const textarea = document.getElementById('content');
+            const rect = textarea.getBoundingClientRect();
+            const textareaContent = textarea.value.substring(0, position);
+            const lines = textareaContent.split('\n');
+            const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight);
+            const top = rect.top + (lines.length - 1) * lineHeight - textarea.scrollTop;
+            const left = rect.left + measureText(lines[lines.length - 1], textarea) - textarea.scrollLeft;
+            cursors[username].style.transform = `translate(${left}px, ${top}px)`;
+        }
+        
+        function measureText(text, element) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            context.font = window.getComputedStyle(element).font;
+            return context.measureText(text).width;
+        }
+        
+        function updateSelection(username, start, end) {
+            const textarea = document.getElementById('content');
+            const text = textarea.value;
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.setStart(textarea.firstChild, start);
+            range.setEnd(textarea.firstChild, end);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            
+            const highlight = document.createElement('span');
+            highlight.style.backgroundColor = `${userColors[username]}80`;
+            range.surroundContents(highlight);
+        }
+        
+        function addMessage(data) {
+            const messageDiv = document.createElement('div');
+            messageDiv.innerHTML = `<span style="color: ${data.color}">${data.username}</span>: ${data.message}`;
+            document.getElementById('messages').appendChild(messageDiv);
+        }
+        
+        document.getElementById('content').addEventListener('keyup', function(e) {
+            socket.emit('cursor_move', {room: boardId, username: username, position: this.selectionStart});
+        });
+        
+        document.getElementById('content').addEventListener('mouseup', function() {
+            const selection = window.getSelection();
+            const start = selection.anchorOffset;
+            const end = selection.focusOffset;
+            socket.emit('text_selection', {room: boardId, username: username, start: start, end: end});
+        });
+        
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                socket.emit('send_message', {room: boardId, username: username, message: this.value});
+                this.value = '';
+            }
+        });
+
+    </script>
+</body>
+</html>

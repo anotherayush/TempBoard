@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TempBoards - Temporary Collaborative Boards</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: radial-gradient(circle, #bbb 1px, transparent 1px);
+            background-size: 15px 15px;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex flex-col font-['Poppins']">
+    <nav class="bg-blue-600 text-white p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-3xl font-bold">TempBoards</h1>
+            <a href="https://anotherayush.netlify.app/" class="text-sm font-bold hover:underline mr-16">About</a>
+        </div>
+    </nav>
+
+    <main class="flex-grow flex flex-col items-center justify-center px-4">
+        <h2 class="text-4xl font-bold text-gray-800 mb-4 text-center">Create Your Temporary Board</h2>
+        <p class="text-xl text-gray-600 mb-8 text-center max-w-2xl">
+            Instantly generate a collaborative space for your team. </br> No sign-up required!
+        </p>
+        <button id="generateBoard" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-full text-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg">
+            Generate Board
+        </button>
+    </main>
+
+    <footer class="bg-gray-800 text-white py-6">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <h3 class="text-xl font-semibold">TempBoards</h3>
+                    <p class="text-sm text-gray-400">Quick and easy collaborative spaces</p>
+                </div>
+                <div class="flex space-x-4">
+                    <a href="mailto:ayush2004@outlook.com" class="font-bold hover:text-blue-400 transition duration-300 mr-16">Contact</a>
+                </div>
+            </div>
+            <div class="mt-4 text-center text-sm text-gray-400">
+                &copy; 2024 Ayush Srivastava. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        document.getElementById('generateBoard').addEventListener('click', function() {
+            this.classList.add('animate-pulse');
+            fetch('/create_board', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    window.location.href = '/' + data.code;
+                })
+                .catch(() => {
+                    this.classList.remove('animate-pulse');
+                    alert('Failed to create board. Please try again.');
+                });
+        });
+    </script>
+</body>
+</html>
